@@ -1,0 +1,22 @@
+{
+  "nodes": [
+    {
+      "rt_time": 1466008228000.0, 
+      "followers_count": 55, 
+      "id": 255359603, 
+      "screen_name": "henokyen"
+    }, 
+    {
+      "rt_time": 1466008282000.0, 
+      "followers_count": 0, 
+      "id": 725796094660251650, 
+      "screen_name": "Ericx1000"
+    }
+  ], 
+  "links": [
+    {
+      "source": 0, 
+      "target": 1
+    }
+  ]
+}

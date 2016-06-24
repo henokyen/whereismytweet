@@ -1,0 +1,10 @@
+{% extends "layout.html" %}
+{% block content %}
+    <h1>Put the ID of your recent tweet </h1>
+    <form method="post" action="{{ url_for('grapht') }}">
+        <p><label>TweetID:</label> <input type="text" name="tweetID" required></p>        
+        <p><button type="submit">Graph Tweet</button></p>
+    </form>
+
+</script>
+{% endblock %}
