@@ -1,10 +1,4 @@
-#!/usr/bin/python3
-#
 # Builds the retweet graph from the retweets stored in Redis
-#
-# Can pick up from a partially-populated graph by specifying the original
-# tweet ID 
-
 
 import cfg
 import sys
@@ -13,19 +7,27 @@ import time
 import json
 import redis
 import os
-
-# unconnected (retweeters):
-# just a temporary container for redis dicts for final step
-unconnected = []
+from priority_dict import priority_dict
+from retweet import Retweet
 
 # connected (retweeters):
 # conduct search through connected RT'ers while adding new edges
 connected = []
-
+REDIS_FRIENDS_KEY = "friends:%s" 
+# Since retweets can arrive out of order, we need a min-heap python dictioary to sort them based in their creation time 
+dict_retweet_set = priority_dict()
 # result graph: 2 lists
 links = []
 nodes = []
+DATE_FORMAT = "%a %b %d %H:%M:%S +0000 %Y"
 
+def json_decoder(obj):
+    return (Retweet(obj))
+
+def getTweetTime(data):
+        stime = time.strptime(data['created_at'],DATE_FORMAT)
+        epochtime = time.mktime(stime)* 1000.0
+        return epochtime
 #----------------------------------------
 def extractDict(status):
 # status: tweepy.models.Status
@@ -39,15 +41,14 @@ def extractDict(status):
 
 #----------------------------------------
 def addToGraph (parent, child):
-# parent: userdict
-# child: userdict
+# parent: id  of parent 
+# children: ids of followers of the parent
 #----------------------------------------
     global links
-
     if (child):
-        nodes.append(child)        
-        if (parent):           
-            links.append({'source':getNodeIndex(parent), 
+          nodes.append(child)
+	  if (parent):
+	      links.append({'source':getNodeIndex(parent), 
                           'target':getNodeIndex(child)})
 #----------------------------------------
 def getNodeIndex (user):
@@ -57,29 +58,26 @@ def getNodeIndex (user):
 
     for i in range(len(nodes)): 
         
-        if (user['id'] == nodes[i]['id']):
+        if (user.id == nodes[i].id):
             return i
     return -1
 
-# form the neo4j db, fecth users who are followed by user
+# form the neo4j database, fecth users who are followed by this specific user
 def fecthFriends(user):
-  userid = "User_"+str(user['id'])  
+  userid = "User_"+str(user.id)  
   rel = "MATCH (a:User)-[:Follows]->(b:User {name: {S}}) RETURN a.name as name"
   follwed_list = list(cfg.graph.cypher.execute(rel,{"S":userid})) 
   for followed in follwed_list:
-	cfg.red.hset("friends:%s" % user['id'], followed.name.strip("User_"), "")    
+	cfg.red.hset("friends:%s" % user.id, followed.name.strip("User_"), "")    
   
 #----------------------------------------
 def isFriend(parent,child):
-# parent, child, root: userdict 
-#----------------------------------------
-   
-    #print "the child is ", child 
-    # if child hasn't been crawled yet, get data from Neo4j. Note getting this information from Twitter is very time consuming
-    key = REDIS_FRIENDS_KEY % child['id']
+    # if child hasn't been crawled yet, get all get all the people that child could have retweeted from Neo4j. 
+    # Note getting this information from Twitter is very time consuming    
+    key = REDIS_FRIENDS_KEY % child.id
     if (not cfg.red.exists(key)):
-          fecthFriends(child) # get all the people this child is followed
-    return cfg.red.hexists(key, parent['id']) #returns if existing node is being followed by a retweeter
+          fecthFriends(child) 
+    return cfg.red.hexists(key, parent.id) #returns 1 if any existing node is being followed by this child, 0 otherwise
 
 #----------------------------------------
 
@@ -87,29 +85,26 @@ def reverseSearch(user,source):
 # user: userdict from Redis
 #----------------------------------------
 
-    global nodes, connected, api
+    global nodes, connected
 
-    # discard if duplicate
+    # discard if duplicate, is that retweet is already part of the graph 
     if user in nodes:
         return 
 
     # assume node is isolated until parent is found
     parent = None
 
-    # connect user by iterating through already-connected nodes
+    # connect user by iterating through already-connected nodes, i.e., find from which other user this current user might have retweeted
     for existing in connected:
-
-        # NOTE: since tweets are caught chronologically, child's
-        # parent is guaranteed to be in the (existing) graph
         if isFriend(existing,user):
             parent = existing
             break
 
     if parent is not None: 
-        print ("    New edge: %s <=== %s" % (parent['screen_name'], user['screen_name']))
+        print ("    New edge: %s <=== %s" % (parent.screen_name, user.screen_name))
         addToGraph(parent, user)
     else:
-        print ("    User %s is isolated" % user['screen_name'])
+        print ("    User %s is isolated" % user.screen_name)
         addToGraph(None, user)
 
     # retweeter has been connected
@@ -123,14 +118,11 @@ def reverseSearch(user,source):
 if len(sys.argv) == 2:
     tweetId = sys.argv[1]
 
-# Connect to Twitter 
-REDIS_FRIENDS_KEY = "friends:%s" 
-
 #if tweetId is supplied, do not wait on Redis signal. Mostly, it is hard to know the id of a certain tweet
 if len(sys.argv) == 2:
     tweetId = sys.argv[1]
 else:
-    # continuously check Redis for start signal, meaning for a user to tweet
+    #continuously check Redis for start signal, meaning if a user tweets
     while True:
         if cfg.red.llen('start') == 0:
             time.sleep(30)
@@ -138,67 +130,58 @@ else:
             tweetId = cfg.red.lindex('start',0)
             break
 
-# set JSON filename for this tweet
-filename = "../data/streaming/%s.json" % tweetId
 
-# if JSON file does not exist, this is the first pass, the initialize the graph
 retweetiD = tweetId + "i"
-if cfg.red.llen(retweetiD)!=0:
+if cfg.red.llen(retweetiD)!= 0:
  print "Reading a prevoius retweet graph from Redis keyed at: ",retweetiD
  data = json.loads(cfg.red.lindex(retweetiD,0))
- nodes = data["nodes"]
+ nodes = [json.loads(json.dumps(n), object_hook=json_decoder) for n in data["nodes"]]
  links = data["links"]
  # set the root
  root = nodes[0]
  # populate connected
  connected = nodes
 
-else:
-    root = cfg.red.lindex("Orig",0) # get the original tweet from redis     
-    rot = json.loads(root)
-    connected.append(rot)
-    addToGraph(None, rot)
+else:        
+    #retrive the orignal tweet 
+    root = json.loads(cfg.red.lindex("Orig",0))
+    rt_time = root ['rt_time']
+    root = Retweet(root)
+    dict_retweet_set[root] =rt_time
+    connected.append(root)
+    addToGraph(None, root)
 
-# NOTE: BFS search through retweeters
-# will connect isolated nodes at the end
 
 # iterate over CURRENT list of unconnected retweets from Redis
 quit = 0
 while (quit == 0):
-
-    # check for "Stop" signal, if present, lpop it
-    if (cfg.red.lindex(tweetId,0) == "Stop"): # i.e., if there is still retweets coming up
+    # check for "Stop" signal, i.e., if enough retweet has been collected, then lpop it
+    if (cfg.red.lindex(tweetId,0) == "Stop"): 
         cfg.red.lpop(tweetId)
         quit = 1
 
-    # if the list is empty, sleep
+    # if the list is empty (i.e., if there is no retweets) sleep and wait for retweets to arrive 
     llen = cfg.red.llen(tweetId) # llen is the number of people who retweets the tweet with tweetId
     if llen == 0:
         print("Retweet queue is empty, sleeping for 30 seconds.")
         time.sleep(30)
         continue
-   
-    # if not empty, pop from Redis onto unconnected 
-    # retrieve minimum of llen, 15
+    # otherwise, process the retweets and form the graph off them 
+    print("Forming a graph with %s retweets retrieved from Redis..." % llen)
+    for i in range(0, min(llen,15)):
+        popped = json.loads(cfg.red.rpop(tweetId))  
+        dict_retweet_set[Retweet(popped)] = popped['rt_time']  
+          
+    while len(dict_retweet_set.keys()) != 0:
+		 older_retweet = dict_retweet_set.smallest()	
+		 reverseSearch(older_retweet[0],root)
+		 dict_retweet_set.pop_smallest()
 
-    if quit == 1:
-        n = llen
-    else:
-        n = min(llen,15) # check with 15 retweeters 
-    # process these from the redis data store instead of ...
-    for i in range(n):
-        popped = cfg.red.rpop(tweetId)
-        print popped
-        unconnected.append(json.loads(popped))
-    print("Forming a graph with %s retweets retrieved from Redis..." % n)
-    
-    # connect the graph
-    for retweeter in unconnected:
-        reverseSearch(retweeter,root)
-    graph = json.dumps({'nodes':nodes, 'links':links}, indent=2);
+    # save the resulting graph on redis 
+    graph = json.dumps({'nodes':[n.__dict__ for n in nodes], 'links':links}, indent=2);
     cfg.red.lpush (str(tweetId)+"i", graph)
     
     # clear unconnected so we don't re-attach 
-    unconnected = []
+    unconnected = {}
 
 

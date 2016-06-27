@@ -24,10 +24,10 @@ from twitter import Twitter, OAuth, TwitterHTTPError, TwitterStream
 
 
 class Tweet_Producer(object):
-#----------------------------------------
+	"""
+	Given a tweet, returns basic information from the tweet in python dictionary
+	"""	
     def extractDict(self,status):
-# status: tweepy.models.Status
-#----------------------------------------
       userdict = dict({'id':status['user']['id'],
                      'screen_name':status['user']['screen_name'],
                      'followers_count':status['user']['followers_count'],
@@ -37,10 +37,15 @@ class Tweet_Producer(object):
     def __init__(self, addr):
         """Initialize Producer with address of the kafka broker ip address."""
         self.producer = KafkaProducer(bootstrap_servers=addr,value_serializer=lambda v: json.dumps(v).encode('ascii'))
-    def streamtweets(self):
+    
+    """
+    from stream of tweets, look for a tweet by a specific user. If one is found, then produce a kafka topic of all tweets. 
+    The tweets will be processed (filtered) fromthe counsumer side, which is a spark stream   
+    """    
+    def streamretweets(self):
 		global counter 	
-		tweets_filename = 'soc_retweet.txt'
-        print "Reading the retweet file"
+		# a stream of tweets are simulated from a file 
+		tweets_filename = 'soc_retweet.txt'       
 		tweets_file = open(tweets_filename, "r")        
 		for line in fileinput.input(tweets_filename):
 		   tweet = json.loads(line) 
@@ -51,17 +56,14 @@ class Tweet_Producer(object):
                   cfg.red.lpush('start',tweetID)
                   cfg.red.lpush("Orig",self.extractDict(tweet))
 		       counter += 1
-		   if (counter >= 1):
-			print tweet
-			self.producer.send('Donald_Retweet',tweet)# in case of multiple users,just produce topics with the user ID
+		   
+		   if (counter >= 1):			
+			self.producer.send('Donald_Retweet',tweet)# in case of multiple users,create multiple topics with user IDs
             
 		
-#some variables 
+#define and initialize some variables 
 counter = 0
 tweetId = 0
-tlast = 0
-tsince = 0
-counter = 0
 userlist = cfg.userlist
 int_userlist = [int(x) for x in userlist]
 DATE_FORMAT = "%a %b %d %H:%M:%S +0000 %Y"
@@ -71,5 +73,5 @@ if __name__ == "__main__":
     print(kafka_url)
     partition_key = str(args[2])
     prod = Tweet_Producer(str(args[1]))    
-    prod.streamtweets()
+    prod.streamretweets()
 
