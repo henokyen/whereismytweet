@@ -10,9 +10,6 @@ import os
 from priority_dict import priority_dict
 from retweet import Retweet
 
-# connected (retweeters):
-# conduct search through connected RT'ers while adding new edges
-connected = []
 REDIS_FRIENDS_KEY = "friends:%s" 
 # Since retweets can arrive out of order, we need a min-heap python dictioary to sort them based in their creation time 
 dict_retweet_set = priority_dict()
@@ -180,8 +177,3 @@ while (quit == 0):
     # save the resulting graph on redis 
     graph = json.dumps({'nodes':[n.__dict__ for n in nodes], 'links':links}, indent=2);
     cfg.red.lpush (str(tweetId)+"i", graph)
-    
-    # clear unconnected so we don't re-attach 
-    unconnected = {}
-
-
