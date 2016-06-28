@@ -12,8 +12,6 @@ try:
 except ImportError:
     import simplejson as json
 
-
-
 #process each tweet in each rdd and return (tweetID, retweet_info)
 def getTweet(tweet):
 	global broadtweetID
@@ -28,20 +26,20 @@ def getTweet(tweet):
         except KeyError:
 		 return()     
 #    
-def processRDDs(rdd):
+def ProcessRDDs(rdd):
   global broadtweetID
-  # reads the rdd as a json object and takes only the value leaving the key
+  # reads the rdd as a json object and takes only the value, leaving the key
   parsed = rdd.map(lambda v:json.loads(v[1]))
   print "Filtering for %s" %broadtweetID.value
   #filter out retweets only 
   tweet = parsed.filter(lambda tw: 'retweeted_status' in tw)
-  #select retweets that are retweets of the original tweet, and then sort them based on their creation time 
+  #then, select retweets that are retweets of the original tweet, and sort them based on their creation time 
   retweet = tweet.filter(lambda t : t['retweeted_status']['id'] == int(broadtweetID.value))\
             .sortBy(lambda re_time: cfg.getTweetTime(re_time))\
             .map(lambda x : getTweet(x)).collect()
             
   
-  # if there are retweets of the original tweet, then store them with the id of the original tweet as a key 
+  # if there are retweets of the original tweet, then store them in redis with the id of the original tweet as a key 
   print retweet 
   if len(retweet) != 0:
     print "Writting retweet to the redis database..."
@@ -67,8 +65,8 @@ if __name__=="__main__":
        break;
  print "Each worker is looking for retweets of a tweet with tweetID %s" %tweetID
  print "Broadcastting %s to each worker" %tweetID 
- broadtweetID = sc.broadcast(tweetID)
- tweets.foreachRDD(processRDDs)
+ broadtweetID = sc.broadcast(tweetID) # each spark streaming process is going to select re-tweets of a tweet with this tweetID
+ tweets.foreachRDD(ProcessRDDs)
 
  ssc.start()
  ssc.awaitTermination() 
