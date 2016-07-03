@@ -19,46 +19,53 @@ try:
 except ImportError:
     import simplejson as json
 
-# Import the necessary methods from "twitter" library
-from twitter import Twitter, OAuth, TwitterHTTPError, TwitterStream
-
-
+"""
+Given a tweet, returns basic information about that tweet as a python dictionary. 
+Size and color are additional attributes used to render tweets as nodes in graph.
+"""	
 class Tweet_Producer(object):
-	"""
-	Given a tweet, returns basic information from the tweet in python dictionary
-	"""	
+
     def extractDict(self,status):
       userdict = dict({'id':status['user']['id'],
                      'screen_name':status['user']['screen_name'],
                      'followers_count':status['user']['followers_count'],
-                      'color':7})                    
+                     'size':10,
+                      'color':7})                   
 
       return json.dumps(userdict, ensure_ascii=True) 
+    
+    """Initialize Producer with address of the kafka broker ip address."""
     def __init__(self, addr):
-        """Initialize Producer with address of the kafka broker ip address."""
+       
         self.producer = KafkaProducer(bootstrap_servers=addr,value_serializer=lambda v: json.dumps(v).encode('ascii'))
     
     """
-    from stream of tweets, look for a tweet by a specific user. If one is found, then produce a kafka topic of all tweets. 
-    The tweets will be processed (filtered) fromthe counsumer side, which is a spark stream   
+    from stream of tweets, look for a tweet by a specific user. If one is found, produce a kafka topic of all tweets. 
+    These tweets will be filtered by consumera, which are a spark streaming processes   
     """    
     def streamretweets(self):
 		global counter 	
-		# a stream of tweets are simulated from a file 
+		# a stream of tweets are read from a file to simulate influx of tweets from Twitter 
 		tweets_filename = 'soc_retweet.txt'       
-		tweets_file = open(tweets_filename, "r")        
+		tweets_file = open(tweets_filename, "r")     
+		   
 		for line in fileinput.input(tweets_filename):
 		   tweet = json.loads(line) 
 		   if ('retweeted_status' not in tweet) and (tweet['user']['id'] in int_userlist): 
                print (" Caught a tweet with %s" % tweet['id']) 
 		       tweetID = tweet['id']
 	           if cfg.red.llen('start') == 0: 
-                  cfg.red.lpush('start',tweetID)
+                  cfg.red.lpush('start',tweetID) # to indicate that a user has tweeted and building the graph can start 
                   cfg.red.lpush("Orig",self.extractDict(tweet))
 		       counter += 1
-		   
+		   #when it is know that a user has tweeted, a kafka topic is produced 
 		   if (counter >= 1):			
-			self.producer.send('Donald_Retweet',tweet)# in case of multiple users,create multiple topics with user IDs
+			self.producer.send('Donald_Retweet',tweet)
+		   #stop the stream when enough retweets are collected 	
+		   if (counter == cfg.limit):
+				print("Collected enough tweets, shutting down stream...")
+				red.lpush(tweetID, "Stop") # to indicate that a tweet has received enough retweets and building the graph can stop
+				return False
             
 		
 #define and initialize some variables 
