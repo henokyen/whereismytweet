@@ -1,18 +1,12 @@
 import os
 import json
 import time
-import random
 import sys
 import fileinput
 import redis
 import cfg
 from kafka import KafkaProducer
-import random
-import sys
-import six
 from datetime import datetime
-
-
 import fileinput
 try:
     import json

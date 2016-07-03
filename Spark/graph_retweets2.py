@@ -2,14 +2,9 @@
 # Builds the retweet graph from the retweets stored in Redis
 
 import cfg
-import sys
-import tweepy
 import time
 import json
 import redis
-import os
-from priority_dict import priority_dict
-from retweet import Retweet
 
 # unconnected (retweeters):
 # just a temporary container for redis dicts for final step

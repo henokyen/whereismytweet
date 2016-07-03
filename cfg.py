@@ -4,7 +4,6 @@
 import time,os
 import datetime
 import redis
-import tweepy
 from py2neo import Graph, authenticate, Node, Relationship
 from py2neo.packages.httpstream import http
 

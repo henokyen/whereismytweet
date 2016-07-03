@@ -1,6 +1,4 @@
-import sys
 import redis
-import conf
 import cfg
 import time 
 from pyspark import SparkContext
