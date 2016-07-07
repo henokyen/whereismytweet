@@ -44,19 +44,19 @@ class Tweet_Producer(object):
 		tweets_file = open(tweets_filename, "r")     
 		   
 		for line in fileinput.input(tweets_filename):
-		   tweet = json.loads(line) 
-		   if ('retweeted_status' not in tweet) and (tweet['user']['id'] in int_userlist): 
-               print (" Caught a tweet with %s" % tweet['id']) 
-		       tweetID = tweet['id']
-	           if cfg.red.llen('start') == 0: 
-                  cfg.red.lpush('start',tweetID) # to indicate that a user has tweeted and building the graph can start 
-                  cfg.red.lpush("Orig",self.extractDict(tweet))
-		       counter += 1
-		   #when it is know that a user has tweeted, a kafka topic is produced 
-		   if (counter >= 1):			
-			self.producer.send('Donald_Retweet',tweet)
-		   #stop the stream when enough retweets are collected 	
-		   if (counter == cfg.limit):
+			tweet = json.loads(line) 
+			if ('retweeted_status' not in tweet) and (tweet['user']['id'] in int_userlist): 
+				print (" Caught a tweet with %s" % tweet['id']) 
+				tweetID = tweet['id']
+				if cfg.red.llen('start') == 0: 
+				  cfg.red.lpush('start',tweetID) # to indicate that a user has tweeted and building the graph can start 
+				  cfg.red.lpush("Orig",self.extractDict(tweet))
+				  counter += 1
+				#when it is know that a user has tweeted, a kafka topic is produced 
+			if (counter >= 1):			
+				self.producer.send('Donald_Retweet',tweet)
+				#stop the stream when enough retweets are collected 	
+			if (counter == cfg.limit):
 				print("Collected enough tweets, shutting down stream...")
 				red.lpush(tweetID, "Stop") # to indicate that a tweet has received enough retweets and building the graph can stop
 				return False
